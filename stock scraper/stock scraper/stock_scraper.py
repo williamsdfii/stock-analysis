@@ -64,24 +64,29 @@ for q in range(len(sdates)):
     #time.sleep(1)
     dataset = list()
     largest = 0
+    badticks = []
+
     # go through each symbol in the list
     for i in range(len(symbols)):
-        badticks = []
-        if i%50==0:
+        #print(i)
+        if i%5==0:
             print(i)
         #time.sleep(1)
         symbol = symbols[i]     #select a symbol
         try:
             ticker = yf.Ticker(symbol)
+            dataset.append(list())          #append a list to the dataset that will include a single ticker data for the selected dates
             if ticker.info['regularMarketPrice'] is None:
                 badticks.append(i)
                 #print("removal")
                 continue
+            
             hist = ticker.history(start=sdates[q-1], end=edates[q-1], interval='1wk', actions=False)        #pull data at the set interval between the dates
-            #print(hist)
+            if hist.empty == True:
+                badticks.append(i)
+                #print("removal2")
+                continue
 
-            dataset.append(list())          #append a list to the dataset that will include a single ticker data for the selected dates
-            dataset[i].append(symbol)       #place the symbol at the beginning of the list
             temp = hist['Close'].values     #place the close values in a temporary list
             #remove NaNs fromn the temp array. these appear for dividends and if the end date wasn't a business day
             nandices = []               #create an array the logs the indicies of the NaNs
@@ -89,23 +94,49 @@ for q in range(len(sdates)):
                 if isnan(temp[j]):
                     nandices.append(j)
             temp = numpy.delete(temp, nandices)     #remove the noted indices from the temporary array
+            avg = numpy.average(temp)         #find the average for the close values
+            if isnan(avg):
+                badticks.append(i)
+                #print("removal3")
+                continue
+            dataset[i].append(symbol)       #place the symbol at the beginning of the list
             dataset[i].append(temp)                 #append the list, sans NaNs, to the list for the ticker
             #Create a normalized set of data
-            avg = numpy.average(dataset[i][1])         #find the average for the close values
             dataset[i].append([])                      #create a new array to hold the normalized values
             for x in dataset[i][1]:
                dataset[i][2].append(x/avg)             #append the array to the list for the ticker
                if x/avg >largest:
                    largest = x/avg                     #track the largest normalized value for use later when when calculating the relativized data
         except Exception as e:
-            #print(e)
+            print(e)
             badticks.append(i)
+            #print("removal4")
             continue
+    #print(badticks)
     if len(badticks)>0:
         symbols = numpy.delete(symbols, badticks)
+        #print(symbols)
+        if q > 0:
+            for o in range(q):
+                for k in range(len(badticks)-1, -1, -1):
+                    comp[o].pop(badticks[k])
+                    #print(comp[o][badticks[k]])
+    rems = []
+    #remove tickers that returned no data and remove the empty dataset arrays
+    for x in range(len(dataset)):
+        if len(dataset[x])<1:
+            rems.append(x)
+        elif len(dataset[x][0])<1:
+            rems.append(x)
+    end = len(rems)
+    for x in range(end-1,-1, -1):
+        dataset.pop(rems[x])
+    
+    #if len(rems)>0:
+        #symbols = numpy.delete(symbols, rems)
+        
     #create the relativized and change data
-    for i in range(len(symbols)):       
-        #time.sleep(1)
+    for i in range(len(symbols)): 
         dataset[i].append([])                      # append 2 new arrays for the relativized and change data
         dataset[i].append([])
         for x in range(len(dataset[i][2])):
@@ -122,29 +153,43 @@ print("comp finished")
 #               data (object[n][m][p][i])
 #       ticker2
 #           symbol, prices, normalized, realtivized, change
-data = {}
-for wk in range(len(comp[0][0][4])):
-    column1 = "week"+str(wk)
-    column2 = "stdev"+str(wk)
-    data[column1] = list()
-    data[column2] = list()
+weeks = 60
 for tick in range(len(comp[0])):
     y1 = comp[0]
     y2 = comp[1]
     y3 = comp[2]
     y4 = comp[3]
     y5 = comp[4]
-
-    for wk in range(len(y1[tick][4])):
+    least = min([len(y1[tick][4]), len(y2[tick][4]), len(y3[tick][4]), len(y4[tick][4]), len(y5[tick][4])])
+    if weeks>least:
+        weeks = least
+data = {}
+for wk in range(weeks):
+    column1 = "week"+str(wk)
+    column2 = "stdev"+str(wk)
+    data.update({column1 : list()})
+    data.update({column2 : list()})
+for tick in range(len(comp[0])):
+    y1 = comp[0]
+    y2 = comp[1]
+    y3 = comp[2]
+    y4 = comp[3]
+    y5 = comp[4]
+    #print(y1[tick][4])
+    #print(y2[tick][4])
+    #print(y3[tick][4])
+    #print(y4[tick][4])
+    #print(y5[tick][4])
+    for wk in range(weeks):
         column1 = "week"+str(wk)
         column2 = "stdev"+str(wk)
         week = [y1[tick][4][wk], y2[tick][4][wk], y3[tick][4][wk], y4[tick][4][wk], y5[tick][4][wk]]
-        #print(week)
         avg = numpy.average(week)
         sdev = numpy.std(week)
         data[column1].append(avg)
         data[column2].append(sdev)
+#print(data)
 chart = pandas.DataFrame(data, index=symbols)
 #print(chart)
-chart.to_csv("1-8-22.csv")
+chart.to_csv("1-23-22.csv")
 print("complete")
